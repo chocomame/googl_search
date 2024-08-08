@@ -16,13 +16,11 @@ def is_valid_url(url):
 def search_goo_gl_urls(url):
     if not is_valid_url(url):
         return url, [], "無効なURL"
-
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
     except requests.RequestException as e:
         return url, [], f"エラー: {str(e)}"
-
     soup = BeautifulSoup(response.text, 'html.parser')
     
     goo_gl_pattern = re.compile(r'https://goo\.gl/\S+')
@@ -32,25 +30,31 @@ def search_goo_gl_urls(url):
 
 def process_urls(urls):
     results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        future_to_url = {executor.submit(search_goo_gl_urls, url.strip()): url for url in urls}
-        for future in concurrent.futures.as_completed(future_to_url):
-            url, goo_gl_urls, error = future.result()
-            results.append({"URL": url, "goo.gl URLs": goo_gl_urls, "エラー": error})
+    for url in urls:
+        url = url.strip()
+        try:
+            result_url, goo_gl_urls, error = search_goo_gl_urls(url)
+            results.append({"URL": result_url, "goo.gl URLs": ', '.join(goo_gl_urls) if goo_gl_urls else '', "エラー": error or ''})
+        except Exception as e:
+            results.append({"URL": url, "goo.gl URLs": '', "エラー": f"予期せぬエラー: {str(e)}"})
     return results
 
-st.title('複数サイト対応 goo.gl URL検索ツール')
-
+st.title('複数サイト対応 goo.gl 検索ツール')
+st.markdown('ver1.02：ユーザーが入力した並び順通りに出力されるように修正')
 urls = st.text_area('調査するウェブサイトのURLを1行に1つずつ入力してください:')
 
 if st.button('検索'):
     if urls:
-        urls_list = urls.split('\n')
+        urls_list = [url.strip() for url in urls.split('\n') if url.strip()]
         with st.spinner('検索中...'):
             results = process_urls(urls_list)
         
         df = pd.DataFrame(results)
-        st.dataframe(df)
+        
+        # データフレームの表示をカスタマイズ
+        st.dataframe(
+            df.style.apply(lambda x: ['background-color: #ffcccc' if x['エラー'] else '' for i in x], axis=1)
+        )
         
         csv = df.to_csv(index=False).encode('utf-8')
         st.download_button(
